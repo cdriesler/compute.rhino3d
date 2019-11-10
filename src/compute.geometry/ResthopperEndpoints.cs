@@ -17,6 +17,7 @@ using System.Linq;
 
 namespace compute.geometry
 {
+
     [JsonObject(MemberSerialization.OptOut)]
     public class ResthopperComponent
     {
@@ -61,6 +62,7 @@ namespace compute.geometry
 
     public class ResthopperEndpointsModule : Nancy.NancyModule
     {
+
         public ResthopperEndpointsModule(Nancy.Routing.IRouteCacheProvider routeCacheProvider)
         {
             Get["/grasshopper"] = _ => TranspileGrasshopperAssemblies(Context);
