@@ -87,16 +87,22 @@ namespace compute.geometry
         public List<GrasshopperValue> Values { get; set; }
     }
 
+    public class GrasshopperPosition
+    {
+        public double X { get; set; }
+        public double Y { get; set; }
+    }
+
     public class GrasshopperValue
     {
         public List<int> Path { get; set; } = new List<int>();
         public dynamic Value { get; set; }
     }
 
-    public class GrasshopperPosition
+    public class GrasshopperResult
     {
-        public double X { get; set; }
-        public double Y { get; set; }
+        public string Target { get; set; }
+        public List<GrasshopperValue> Data { get; set; } = new List<GrasshopperValue>();
     }
 
     public class ResthopperEndpointsModule : Nancy.NancyModule
@@ -263,25 +269,30 @@ namespace compute.geometry
             });
 
             // Locate and compute result for any targets
+            var results = new List<GrasshopperResult>();
+
             targets.ForEach(t =>
             {
                 t.CollectData();
                 t.ComputeData();
 
+                var result = new GrasshopperResult() { Target = t.InstanceGuid.ToString() };
+
                 var volatileData = t.VolatileData;
                 for (int p = 0; p < volatileData.PathCount; p++)
                 {
+                    var path = volatileData.Paths[p];
                     foreach (var goo in volatileData.get_Branch(p))
                     {
-                        Console.WriteLine(goo);
+                        result.Data.Add(new GrasshopperValue() { Path = path.Indices.ToList(), Value = ((dynamic)goo).Value });
                     }
                 }
-                    
+
+                results.Add(result);                    
             });
 
             // Return computed results
-
-            return "";
+            return JsonConvert.SerializeObject(results);
         }
 
         static string GetGhxFromPointer(string pointer)
