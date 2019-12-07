@@ -14,6 +14,8 @@ using Rhino.Geometry;
 using System.Net;
 using System.Reflection;
 using System.Linq;
+using System.Drawing;
+using Nancy.Extensions;
 
 namespace compute.geometry
 {
@@ -60,6 +62,43 @@ namespace compute.geometry
         }
     }
 
+    // Container classes from Resthopper javascript library.
+    public class GrasshopperDocument
+    {
+        public List<string> Targets { get; set; } = new List<string>();
+        public List<GrasshopperComponent> Components { get; set; } = new List<GrasshopperComponent>();
+    }
+
+    public class GrasshopperComponent
+    {  
+        public string Name { get; set; }
+        public string Guid { get; set; }
+        public GrasshopperPosition Position { get; set; }
+        public List<GrasshopperParameter> Inputs = new List<GrasshopperParameter>();
+        public List<GrasshopperParameter> Outputs = new List<GrasshopperParameter>();
+    }
+
+    public class GrasshopperParameter
+    {
+        public string NickName { get; set; }
+        public string InstanceGuid { get; set; }
+        public List<string> Sources { get; set; } = new List<string>();
+        public string TypeName { get; set; }
+        public List<GrasshopperValue> Values { get; set; }
+    }
+
+    public class GrasshopperValue
+    {
+        public List<int> Path { get; set; } = new List<int>();
+        public dynamic Value { get; set; }
+    }
+
+    public class GrasshopperPosition
+    {
+        public double X { get; set; }
+        public double Y { get; set; }
+    }
+
     public class ResthopperEndpointsModule : Nancy.NancyModule
     {
 
@@ -68,6 +107,7 @@ namespace compute.geometry
             Get["/grasshopper"] = _ => TranspileGrasshopperAssemblies(Context);
             Post["/grasshopper"] = _ => RunGrasshopper(Context);
             Post["/io"] = _ => GetIoNames(Context);
+            Post["/rhino/grasshopper/evaluate"] = _ => EvaluateGrasshopper(Context);
         }
 
         static bool IsComponentVariable(IGH_ObjectProxy c)
@@ -88,7 +128,7 @@ namespace compute.geometry
 
         static Response TranspileGrasshopperAssemblies(NancyContext ctx)
         {
-            var objs = new List<ResthopperComponent>();
+            var objs = new List<ResthopperComponent>();            
 
             // Convert ReadOnlyCollection of libraries to list for easy searching
             var libraries = new List<GH_AssemblyInfo>();
@@ -122,6 +162,8 @@ namespace compute.geometry
                 {
                     var p = obj.Params;
 
+                    //p.Input.Find(y => y.Name == "test").AddSource()
+
                     p.Input.ForEach(x => rc.Inputs.Add(new ResthopperComponentParameter(x)));
                     p.Output.ForEach(x => rc.Outputs.Add(new ResthopperComponentParameter(x)));
                 }
@@ -130,6 +172,116 @@ namespace compute.geometry
             }
 
             return JsonConvert.SerializeObject(objs);
+        }
+
+        static Response EvaluateGrasshopper(NancyContext ctx)
+        {
+            // Deserialize request body to document container
+            var rhdoc = JsonConvert.DeserializeObject<GrasshopperDocument>(ctx.Request.Body.AsString());
+
+            // Initialize document and cache available objects
+            var ghdoc = new GH_Document();
+            var proxies = Grasshopper.Instances.ComponentServer.ObjectProxies as List<IGH_ObjectProxy>;
+            var allParams = new List<IGH_Param>();
+            var targets = new List<IGH_Param>();
+
+            // Loop through all components and instantiate in document with any declared values
+            rhdoc.Components.ForEach(c =>
+            {
+                // Locate proxy for component
+                var obj = proxies.FirstOrDefault(x => x.Guid.ToString() == c.Guid);
+
+                if (obj == null)
+                {
+                    return;
+                }
+
+                // Instantiate component
+                var component = obj.CreateInstance() as IGH_Component;
+
+                // Match parameter properties with declared values
+                c.Inputs.ForEach(input =>
+                {
+                    var parameter = component.Params.Input.FirstOrDefault(p => p.NickName == input.NickName);
+
+                    // Match parameter instance guid to declared guid
+                    parameter.NewInstanceGuid(new Guid(input.InstanceGuid));
+
+                    // Set any declared values
+                    // ( Chuck ) Number only for now
+                    for (int i = 0; i < input.Values.Count; i++)
+                    {
+                        var v = input.Values[i];
+                        var path = new GH_Path(v.Path.ToArray());
+                        var val = new GH_Number(v.Value);
+                        parameter.AddVolatileData(path, i, val);
+                    }
+
+                    // Add parameter to cache, and to target cache if targeted
+                    allParams.Add(parameter);
+                    if (rhdoc.Targets.IndexOf(input.InstanceGuid) >= 0)
+                    {
+                        targets.Add(parameter);
+                    }
+                });
+
+                c.Outputs.ForEach(output =>
+                {
+                    var parameter = component.Params.Output.FirstOrDefault(p => p.NickName == output.NickName);
+
+                    // Match parameter instance guid to declared guid
+                    parameter.NewInstanceGuid(new Guid(output.InstanceGuid));
+
+                    // Add parameter to cache, and to target cache if targeted
+                    allParams.Add(parameter);
+                    if (rhdoc.Targets.IndexOf(output.InstanceGuid) >= 0)
+                    {
+                        targets.Add(parameter);
+                    }
+                });
+
+                // Add component to document
+                ghdoc.AddObject(component, false);
+            });
+
+            // Loop through all instances and set any sources
+            rhdoc.Components.ForEach(c =>
+            {
+                c.Inputs.ForEach(input =>
+                {
+                    if (input.Sources.Count > 0)
+                    {
+                        var parameter = allParams.FirstOrDefault(p => p.InstanceGuid.ToString() == input.InstanceGuid);
+
+                        input.Sources.ForEach(s =>
+                        {
+                            var source = allParams.FirstOrDefault(p => p.InstanceGuid.ToString() == s);
+                            parameter.AddSource(source);
+                        });
+                    }
+                });
+            });
+
+            // Locate and compute result for any targets
+            targets.ForEach(t =>
+            {
+                t.CollectData();
+                t.ComputeData();
+
+                var volatileData = t.VolatileData;
+                for (int p = 0; p < volatileData.PathCount; p++)
+                {
+                    foreach (var goo in volatileData.get_Branch(p))
+                    {
+                        Console.WriteLine(goo);
+                    }
+                }
+                    
+            });
+
+            // Return computed results
+
+            return "";
         }
 
         static string GetGhxFromPointer(string pointer)
