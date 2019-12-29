@@ -56,7 +56,7 @@ namespace compute.geometry
         {
             Name = param.Name;
             NickName = param.NickName;
-            Description = param.InstanceDescription;
+            Description = param.Description;
             IsOptional = param.Optional;
             TypeName = param.TypeName;
         }
@@ -220,6 +220,7 @@ namespace compute.geometry
                         var v = input.Values[i];
                         var path = new GH_Path(v.Path.ToArray());
                         var val = new GH_Number(v.Value);
+                        // new GH_ObjectWrapper(v.Value).CastTo<GH_Number>(out GH_Number val);
                         parameter.AddVolatileData(path, i, val);
                     }
 
@@ -273,18 +274,25 @@ namespace compute.geometry
 
             targets.ForEach(t =>
             {
+                //var c = ghdoc.Objects.First(x => ((IGH_Component)x).Params.Output.Select(y => y.InstanceGuid.ToString()).ToList().IndexOf(t.InstanceGuid.ToString()) >= 0);
                 t.CollectData();
                 t.ComputeData();
 
                 var result = new GrasshopperResult() { Target = t.InstanceGuid.ToString() };
-
+                
                 var volatileData = t.VolatileData;
+                //Console.WriteLine(volatileData.AllData(false).ToList().Count);
                 for (int p = 0; p < volatileData.PathCount; p++)
                 {
                     var path = volatileData.Paths[p];
-                    foreach (var goo in volatileData.get_Branch(p))
+                    var goo = volatileData.get_Branch(p);
+
+                    for (int i = 0; i < goo.Count; i++)
                     {
-                        result.Data.Add(new GrasshopperValue() { Path = path.Indices.ToList(), Value = ((dynamic)goo).Value });
+                        var indices = path.Indices.ToList();
+                        indices.Add(i);
+
+                        result.Data.Add(new GrasshopperValue() { Path = indices, Value = ((dynamic)goo[i]).Value });
                     }
                 }
 
