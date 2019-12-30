@@ -96,6 +96,7 @@ namespace compute.geometry
     public class GrasshopperValue
     {
         public List<int> Path { get; set; } = new List<int>();
+        public string Type { get; set; }
         public dynamic Value { get; set; }
     }
 
@@ -292,7 +293,7 @@ namespace compute.geometry
                         var indices = path.Indices.ToList();
                         indices.Add(i);
 
-                        result.Data.Add(new GrasshopperValue() { Path = indices, Value = ((dynamic)goo[i]).Value });
+                        result.Data.Add(new GrasshopperValue() { Path = indices, Type = goo[i].GetType().Name, Value = ((dynamic)goo[i]).Value });
                     }
                 }
 
