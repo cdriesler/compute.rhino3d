@@ -292,8 +292,15 @@ namespace compute.geometry
                     {
                         var indices = path.Indices.ToList();
                         indices.Add(i);
-
-                        result.Data.Add(new GrasshopperValue() { Path = indices, Type = goo[i].GetType().Name, Value = ((dynamic)goo[i]).Value });
+                        try
+                        {
+                            result.Data.Add(new GrasshopperValue() { Path = indices, Type = goo[i].GetType().Name, Value = ((dynamic)goo[i]).Value });
+                        } catch (Exception e)
+                        {
+                            Console.WriteLine(e.Message);
+                            result.Data.Add(new GrasshopperValue() { Path = indices, Type = "UNSUPPORTED", Value = "" });
+                        }
+                        
                     }
                 }
 
