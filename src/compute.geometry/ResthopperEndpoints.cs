@@ -31,6 +31,7 @@ namespace compute.geometry
         public string Subcategory { get; set; }
         public bool IsObsolete { get; set; }
         public bool IsVariable { get; set; }
+        public string Icon { get; set; }
         public List<ResthopperComponentParameter> Inputs { get; set; }
         public List<ResthopperComponentParameter> Outputs { get; set; }
 
@@ -160,6 +161,11 @@ namespace compute.geometry
                 rc.Subcategory = proxies[i].Desc.HasSubCategory ? proxies[i].Desc.SubCategory : "";
                 rc.IsObsolete = proxies[i].Obsolete;
                 rc.IsVariable = IsComponentVariable(proxies[i]);
+
+                var ms = new MemoryStream();
+                proxies[i].Icon.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                var bytes = ms.ToArray();
+                rc.Icon = Convert.ToBase64String(bytes);
 
                 rc.LibraryName = libraries.Find(x => x.Id == proxies[i].LibraryGuid).Name;
 
