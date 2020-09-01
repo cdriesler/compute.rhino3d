@@ -16,6 +16,7 @@ using System.Reflection;
 using System.Linq;
 using System.Drawing;
 using Nancy.Extensions;
+using Rhino.FileIO;
 
 namespace compute.geometry
 {
@@ -113,25 +114,43 @@ namespace compute.geometry
         public ResthopperEndpointsModule(Nancy.Routing.IRouteCacheProvider routeCacheProvider)
         {
             Get["/grasshopper"] = _ => TranspileGrasshopperAssemblies(Context);
+            Get["/test"] = parameters => GetTestGeometry(Context);
             Post["/grasshopper"] = _ => RunGrasshopper(Context);
             Post["/io"] = _ => GetIoNames(Context);
             Post["/rhino/grasshopper/evaluate"] = _ => EvaluateGrasshopper(Context);
         }
 
+        static Response GetTestGeometry(NancyContext ctx)
+        {
+            var dims = ctx.Request.Url.ToString().Split('?')[1].Split('&').Select((s) => s.Split('=')[1]).ToArray();
+            var x = Double.Parse(dims[0]) / 2;
+            var y = Double.Parse(dims[1]) / 2;
+            var z = Double.Parse(dims[2]) / 2;
+            Console.WriteLine($"{x}, {y}, {z}");
+            var box = new Box(Plane.WorldXY, new Interval(-x, x), new Interval(-y, y), new Interval(-z, z));
+            return JsonConvert.SerializeObject(box);
+        }
+
         static bool IsComponentVariable(IGH_ObjectProxy c)
         {
-            var a = Assembly.LoadFrom(c.Location);
-
-            var assemblyType = a.GetTypes().FirstOrDefault(x => c.Type.ToString() == x.FullName);
-
-            if (assemblyType == null)
+            try
             {
+                var a = Assembly.LoadFrom(c.Location);
+
+                var assemblyType = a.GetTypes().FirstOrDefault(x => c.Type.ToString() == x.FullName);
+
+                if (assemblyType == null)
+                {
+                    return false;
+                }
+
+                var res = assemblyType.GetTypeInfo().DeclaredMethods.Select(x => x.Name).ToList().Contains("CanInsertParameter");
+
+                return res;
+            }
+            catch (Exception e) {
                 return false;
             }
-
-            var res = assemblyType.GetTypeInfo().DeclaredMethods.Select(x => x.Name).ToList().Contains("CanInsertParameter");
-
-            return res;
         }
 
         static Response TranspileGrasshopperAssemblies(NancyContext ctx)
